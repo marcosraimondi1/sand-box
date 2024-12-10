@@ -14,14 +14,24 @@ FetchContent_Declare(SFML
     SYSTEM)
 FetchContent_MakeAvailable(SFML)
 
-add_executable(main src/main.cpp)
-target_link_libraries(main PRIVATE sfml-graphics)
-target_compile_features(main PRIVATE cxx_std_17)
+FetchContent_Declare(
+  imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui
+  GIT_TAG 35b1148efb839381b84de9290d9caf0b66ad7d03 # 1.82
+)
+FetchContent_MakeAvailable(imgui)
 
-if(WIN32)
-    add_custom_command(
-        TARGET main
-        COMMENT "Copy OpenAL DLL"
-        PRE_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${SFML_SOURCE_DIR}/extlibs/bin/$<IF:$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>,x64,x86>/openal32.dll $<TARGET_FILE_DIR:main>
-        VERBATIM)
-endif()
+FetchContent_Declare(
+  imgui-sfml
+  GIT_REPOSITORY https://github.com/SFML/imgui-sfml
+  GIT_TAG 82dc2033e51b8323857c3ae1cf1f458b3a933c35 # 2.3
+)
+message(STATUS "Fetching ImGui-SFML...")
+
+set(IMGUI_DIR ${imgui_SOURCE_DIR})
+set(IMGUI_SFML_FIND_SFML OFF)
+FetchContent_MakeAvailable(imgui-sfml)
+
+add_executable(main src/main.cpp)
+target_link_libraries(main PRIVATE ImGui-SFML::ImGui-SFML)
+target_compile_features(main PRIVATE cxx_std_17)
