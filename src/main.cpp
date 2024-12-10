@@ -1,87 +1,10 @@
-#include "Vector2D.hpp"
 #include <SFML/Graphics.hpp>
-#include <SFML/Graphics/RectangleShape.hpp>
-#include <SFML/Window/Window.hpp>
-#include <iostream>
-#include <tuple>
-#include <utility>
 
 #define MAX_HEIGHT 500
 #define MAX_WIDTH 500
-
-class Component {
-  public:
-    bool exists = false; // if entity contains component, defaults to false
-};
-
-class CTransform : public Component {
-  public:
-    Vector2D position = {0, 0};
-    Vector2D velocity = {0, 0};
-    Vector2D acceleration = {0, 0};
-    CTransform() {};
-    CTransform(const Vector2D &p, const Vector2D &v, const Vector2D &a)
-        : position(p), velocity(v), acceleration(a) {};
-};
-
-class CShape : public Component {
-  public:
-    sf::RectangleShape shape;
-    CShape() {};
-};
-
-using ComponentTuple = std::tuple<CTransform, CShape>;
-
-class Entity {
-    ComponentTuple m_components;
-    bool m_alive = true; // if false delete entity
-
-  public:
-    Entity() {};
-
-    template <typename T, typename... TArgs> T &add(TArgs &&...mArgs) {
-        // TArgs allows for forwarding the constructor parameters
-        auto &component = get<T>();
-        component = T(std::forward<TArgs>(mArgs)...);
-        component.exists = true;
-        return component;
-    };
-    template <typename T> T &get() { return std::get<T>(m_components); };
-    template <typename T> bool has() { return get<T>().exists; };
-    template <typename T> void remove() {
-        get<T>() = T(); // defaults exists to false
-    };
-};
-
-class Systems {
-  public:
-    static void sMovement(std::vector<Entity> &entities, float elapsed) {
-        for (auto &e : entities) {
-            if (!e.has<CTransform>() || !e.has<CShape>())
-                continue;
-            auto &t = e.get<CTransform>();
-            auto s = e.get<CShape>();
-            t.velocity += t.acceleration * elapsed;
-            t.position += t.velocity * elapsed;
-
-            if (t.position.m_y >= MAX_HEIGHT - s.shape.getSize().y)
-                t.position.m_y = MAX_HEIGHT - s.shape.getSize().y;
-        }
-    };
-
-    static void sDraw(std::vector<Entity> &entities, sf::RenderWindow &window) {
-        window.clear();
-        for (auto &e : entities) {
-            if (!e.has<CTransform>() || !e.has<CShape>())
-                continue;
-            auto t = e.get<CTransform>();
-            auto s = e.get<CShape>();
-            s.shape.setPosition({t.position.m_x, t.position.m_y});
-            window.draw(s.shape);
-        }
-        window.display();
-    };
-};
+#define GRAIN_SIZE 5
+#define MAP_WIDTH MAX_WIDTH / GRAIN_SIZE
+#define MAP_HEIGHT MAX_HEIGHT / GRAIN_SIZE
 
 int main() {
 
@@ -93,45 +16,132 @@ int main() {
     window.setFramerateLimit(60);
 
     sf::Clock clock;
+    const float refreshPeriod_s = 0.01;
+    float timeSinceLastUpdate_s = 10.f;
+    char red, green, blue = 0;
 
-    Systems sys;
-    std::vector<Entity> entities;
+    bool useMap1 = true;
+    int map1[MAP_WIDTH][MAP_HEIGHT] = {0};
+    int map2[MAP_WIDTH][MAP_HEIGHT] = {0};
 
-    bool isMousePressed = false;
+    bool isButtonPressed = false;
+
     while (window.isOpen()) {
         for (auto event = sf::Event(); window.pollEvent(event);) {
             if (event.type == sf::Event::Closed) {
                 window.close();
             } else if (event.type == sf::Event::MouseButtonPressed) {
                 if (event.mouseButton.button == sf::Mouse::Left) {
-                    isMousePressed = true;
+                    isButtonPressed = true;
+                    red = std::rand() % 256;
+                    green = std::rand() % 256;
+                    blue = std::rand() % 256;
                 }
             } else if (event.type == sf::Event::MouseButtonReleased) {
-                if (event.mouseButton.button == sf::Mouse::Left) {
-                    isMousePressed = false;
-                }
-            } else if (event.type == sf::Event::MouseMoved) {
-                if (isMousePressed) {
-                    Entity grain = Entity();
-                    auto &s = grain.add<CShape>();
-                    auto &t = grain.add<CTransform>();
-                    s.shape.setSize({10, 10});
-                    s.shape.setFillColor(
-                        sf::Color(rand() % 255, rand() % 255, rand() % 255));
-                    t.position = Vector2D(event.mouseMove.x, event.mouseMove.y);
-                    t.acceleration = Vector2D(0, 100);
-
-                    entities.push_back(grain);
-                }
+                if (event.mouseButton.button == sf::Mouse::Left)
+                    isButtonPressed = false;
             }
         }
 
         sf::Time elapsed = clock.restart();
+        timeSinceLastUpdate_s += elapsed.asSeconds();
 
         // Update here
-        sys.sMovement(entities, elapsed.asSeconds());
+        if (timeSinceLastUpdate_s >= refreshPeriod_s) {
+            timeSinceLastUpdate_s = 0;
+
+            if (isButtonPressed) {
+                int x = sf::Mouse::getPosition(window).x;
+                int y = sf::Mouse::getPosition(window).y;
+
+                if (x < 0)
+                    x = 0;
+                else if (x >= MAX_WIDTH)
+                    x = MAX_WIDTH - 1;
+                x = x % MAX_WIDTH / GRAIN_SIZE;
+
+                if (y < 0)
+                    y = 0;
+                else if (y >= MAX_HEIGHT)
+                    y = MAX_HEIGHT - 1;
+                y = y % MAX_HEIGHT / GRAIN_SIZE;
+
+                if (useMap1) {
+                    if (map1[x][y] == 0)
+                        map1[x][y] = red | (green << 8) | (blue << 16);
+                } else {
+                    if (map2[x][y] == 0)
+                        map2[x][y] = red | (green << 8) | (blue << 16);
+                }
+            }
+
+            for (int j = MAP_HEIGHT - 1; j >= 0; j--) {
+                for (int i = 0; i < MAP_WIDTH; i++) {
+                    if (useMap1) {
+                        if (map1[i][j]) {
+                            if (j == MAP_HEIGHT - 1)
+                                map2[i][j] = map1[i][j];
+                            else if (map2[i][j + 1] == 0)
+                                map2[i][j + 1] = map1[i][j];
+                            else if (map2[i - 1][j + 1] == 0 && i - 1 > 0)
+                                map2[i - 1][j + 1] = map1[i][j];
+                            else if (map2[i + 1][j + 1] == 0 &&
+                                     i + 1 < MAP_WIDTH)
+                                map2[i + 1][j + 1] = map1[i][j];
+                            else
+                                map2[i][j] = map1[i][j];
+                        }
+                    } else {
+                        if (map2[i][j]) {
+                            if (j == MAP_HEIGHT - 1)
+                                map1[i][j] = map2[i][j];
+                            else if (map1[i][j + 1] == 0)
+                                map1[i][j + 1] = map2[i][j];
+                            else if (map1[i + 1][j + 1] == 0 &&
+                                     i + 1 < MAP_WIDTH)
+                                map1[i + 1][j + 1] = map2[i][j];
+                            else if (map1[i - 1][j + 1] == 0 && i - 1 > 0)
+                                map1[i - 1][j + 1] = map2[i][j];
+                            else
+                                map1[i][j] = map2[i][j];
+                        }
+                    }
+                }
+            }
+            useMap1 = !useMap1;
+        }
 
         // Draw here
-        sys.sDraw(entities, window);
+        window.clear();
+        for (int i = 0; i < MAP_WIDTH; i++) {
+            for (int j = 0; j < MAP_HEIGHT; j++) {
+                if (useMap1) {
+                    if (map1[i][j]) {
+                        sf::RectangleShape grain = sf::RectangleShape(
+                            sf::Vector2f(GRAIN_SIZE, GRAIN_SIZE));
+                        grain.setPosition(
+                            sf::Vector2f(i * GRAIN_SIZE, j * GRAIN_SIZE));
+                        grain.setFillColor(sf::Color(
+                            map1[i][j] & 0xFF, (map1[i][j] >> 8) & 0xFF,
+                            (map1[i][j] >> 16) & 0xFF));
+                        window.draw(grain);
+                    }
+                    map2[i][j] = 0;
+                } else {
+                    if (map2[i][j]) {
+                        sf::RectangleShape grain = sf::RectangleShape(
+                            sf::Vector2f(GRAIN_SIZE, GRAIN_SIZE));
+                        grain.setPosition(
+                            sf::Vector2f(i * GRAIN_SIZE, j * GRAIN_SIZE));
+                        grain.setFillColor(sf::Color(
+                            map2[i][j] & 0xFF, (map2[i][j] >> 8) & 0xFF,
+                            (map2[i][j] >> 16) & 0xFF));
+                        window.draw(grain);
+                    }
+                    map1[i][j] = 0;
+                }
+            }
+        }
+        window.display();
     }
 }
