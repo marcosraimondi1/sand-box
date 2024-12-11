@@ -1,10 +1,14 @@
 #include "imgui.h"
+#include <SFML/Audio/Music.hpp>
+#include <SFML/Audio/Sound.hpp>
+#include <SFML/Audio/SoundBuffer.hpp>
+#include <SFML/Audio/SoundSource.hpp>
 #include <SFML/Graphics.hpp>
 #include <imgui-SFML.h>
 
-#define MAX_HEIGHT 500
-#define MAX_WIDTH 500
-#define GRAIN_SIZE 5
+#define MAX_HEIGHT 800
+#define MAX_WIDTH 1000
+#define GRAIN_SIZE 10
 #define MAP_WIDTH MAX_WIDTH / GRAIN_SIZE
 #define MAP_HEIGHT MAX_HEIGHT / GRAIN_SIZE
 
@@ -15,6 +19,28 @@ int main() {
         sf::RenderWindow({MAX_WIDTH, MAX_HEIGHT}, "CMake SFML Project",
                          sf::Style::Close, settings);
     window.setFramerateLimit(60);
+
+    sf::SoundBuffer buffer1;
+    sf::Sound sound_pop;
+    if (!buffer1.loadFromFile("../pop.wav"))
+        return -1;
+    sound_pop.setBuffer(buffer1);
+    sound_pop.setVolume(10);
+
+    float volume_effects = 10, volume_music = 10;
+    sf::SoundBuffer buffer;
+    sf::Sound sound_grain;
+    if (!buffer.loadFromFile("../pan.wav"))
+        return -1;
+    sound_grain.setBuffer(buffer);
+    sound_grain.setVolume(volume_effects);
+
+    sf::Music music;
+    if (!music.openFromFile("../music.wav"))
+        return -1;
+    music.setLoop(true);
+    music.setVolume(volume_music);
+    music.play();
 
     ImGui::SFML::Init(window);
 
@@ -56,6 +82,7 @@ int main() {
 
         ImGui::Begin("Tools");
         if (ImGui::Button("reset")) {
+            sound_pop.play();
             red = 0;
             green = 0;
             blue = 0;
@@ -79,6 +106,15 @@ int main() {
         ImGui::Text("rand: ");
         ImGui::SameLine();
         ImGui::Checkbox("##random", &useRandomColor);
+        ImGui::Text("Sound");
+        ImGui::Text("fx: ");
+        ImGui::SameLine();
+        if (ImGui::SliderFloat("##effects", &volume_effects, 0, 100))
+            sound_grain.setVolume(volume_effects);
+        ImGui::Text("music: ");
+        ImGui::SameLine();
+        if (ImGui::SliderFloat("##music", &volume_music, 0, 100))
+            music.setVolume(volume_music);
         ImGui::End();
 
         // Update here
@@ -112,22 +148,29 @@ int main() {
             for (int i = 0; i < MAP_WIDTH; i++) {
                 if (useMap1) {
                     if (map1[i][j]) {
-                        if (j == MAP_HEIGHT - 1)
+                        if (j == MAP_HEIGHT - 1) {
                             map2[i][j] = map1[i][j];
-                        else if (map2[i][j + 1] == 0)
+                        } else if (map2[i][j + 1] == 0)
                             map2[i][j + 1] = map1[i][j];
-                        else if (map2[i - 1][j + 1] == 0 && i - 1 > 0)
+                        else if (map2[i - 1][j + 1] == 0 && i - 1 > 0) {
                             map2[i - 1][j + 1] = map1[i][j];
-                        else if (map2[i + 1][j + 1] == 0 && i + 1 < MAP_WIDTH)
+                            if (sound_grain.getStatus() !=
+                                sf::SoundSource::Playing)
+                                sound_grain.play();
+                        } else if (map2[i + 1][j + 1] == 0 &&
+                                   i + 1 < MAP_WIDTH) {
                             map2[i + 1][j + 1] = map1[i][j];
-                        else
+                            if (sound_grain.getStatus() !=
+                                sf::SoundSource::Playing)
+                                sound_grain.play();
+                        } else
                             map2[i][j] = map1[i][j];
                     }
                 } else {
                     if (map2[i][j]) {
-                        if (j == MAP_HEIGHT - 1)
+                        if (j == MAP_HEIGHT - 1) {
                             map1[i][j] = map2[i][j];
-                        else if (map1[i][j + 1] == 0)
+                        } else if (map1[i][j + 1] == 0)
                             map1[i][j + 1] = map2[i][j];
                         else if (map1[i + 1][j + 1] == 0 && i + 1 < MAP_WIDTH)
                             map1[i + 1][j + 1] = map2[i][j];
