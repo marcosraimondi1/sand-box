@@ -46,6 +46,8 @@ int main() {
     int map1[MAP_WIDTH][MAP_HEIGHT] = {0};
 
     bool isButtonPressed = false;
+    bool isRestartPressed = false;
+    bool gravityEnabled = true;
 
     bool useRandomColor = false;
     int red, green, blue = 0;
@@ -78,17 +80,15 @@ int main() {
         ImGui::SFML::Update(window, elapsed);
 
         ImGui::Begin("Tools");
-        if (ImGui::Button("reset")) {
-            sound_pop.play();
-            red = 0;
-            green = 0;
-            blue = 0;
-            for (int j = MAP_HEIGHT - 1; j >= 0; j--) {
-                for (int i = 0; i < MAP_WIDTH; i++) {
-                    map1[i][j] = 0;
-                }
-            }
+        if (ImGui::Button("flush")) {
+            if (sound_pop.getStatus() != sf::SoundSource::Playing)
+                sound_pop.play();
+            isRestartPressed = !isRestartPressed;
         }
+        ImGui::SameLine();
+        ImGui::Text("gravity:");
+        ImGui::SameLine();
+        ImGui::Checkbox("##grav", &gravityEnabled);
         ImGui::Text("Color");
         ImGui::Text("r: ");
         ImGui::SameLine();
@@ -107,12 +107,15 @@ int main() {
         ImGui::Text("Sound");
         ImGui::Text("fx: ");
         ImGui::SameLine();
-        if (ImGui::SliderFloat("##effects", &volume_effects, 0, 100))
+        if (ImGui::SliderFloat("##effects", &volume_effects, 0, 100)) {
             sound_grain.setVolume(volume_effects);
+            sound_pop.setVolume(volume_effects);
+        }
         ImGui::Text("music: ");
         ImGui::SameLine();
-        if (ImGui::SliderFloat("##music", &volume_music, 0, 100))
+        if (ImGui::SliderFloat("##music", &volume_music, 0, 100)) {
             music.setVolume(volume_music);
+        }
         ImGui::End();
 
         // Update here
@@ -143,9 +146,10 @@ int main() {
                         int red_c = red + mod;
                         int green_c = green + mod;
                         int blue_c = blue + mod;
+                        int mods = (gravityEnabled ? 0 : 1) << 24;
 
                         map1[x + i * 2][y + j * 2] =
-                            red_c | (green_c << 8) | (blue_c << 16) + 1;
+                            red_c | (green_c << 8) | (blue_c << 16) | mods + 1;
                     }
                 }
             }
@@ -154,8 +158,12 @@ int main() {
         for (int j = MAP_HEIGHT - 1; j >= 0; j--) {
             for (int i = 0; i < MAP_WIDTH; i++) {
                 if (map1[i][j]) {
+                    if (map1[i][j] & (1 << 24) && !isRestartPressed) {
+                        // gravity disabled
+                        continue;
+                    }
                     if (j == MAP_HEIGHT - 1) {
-                        map1[i][j] = map1[i][j];
+                        map1[i][j] = isRestartPressed ? 0 : map1[i][j];
                     } else if (map1[i][j + 1] == 0) {
                         map1[i][j + 1] = map1[i][j];
                         map1[i][j] = 0;
@@ -171,7 +179,7 @@ int main() {
                         if (sound_grain.getStatus() != sf::SoundSource::Playing)
                             sound_grain.play();
                     } else
-                        map1[i][j] = map1[i][j];
+                        map1[i][j] = isRestartPressed ? 0 : map1[i][j];
                 }
             }
         }
