@@ -1,14 +1,11 @@
-#include "imgui.h"
-#include <SFML/Audio/Music.hpp>
-#include <SFML/Audio/Sound.hpp>
-#include <SFML/Audio/SoundBuffer.hpp>
-#include <SFML/Audio/SoundSource.hpp>
+#include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
 #include <imgui-SFML.h>
+#include <imgui.h>
 
 #define MAX_HEIGHT 800
 #define MAX_WIDTH 1000
-#define GRAIN_SIZE 10
+#define GRAIN_SIZE 5
 #define MAP_WIDTH MAX_WIDTH / GRAIN_SIZE
 #define MAP_HEIGHT MAX_HEIGHT / GRAIN_SIZE
 
@@ -46,14 +43,14 @@ int main() {
 
     sf::Clock clock;
 
-    bool useMap1 = true;
     int map1[MAP_WIDTH][MAP_HEIGHT] = {0};
-    int map2[MAP_WIDTH][MAP_HEIGHT] = {0};
 
     bool isButtonPressed = false;
 
     bool useRandomColor = false;
     int red, green, blue = 0;
+
+    int bucketSize = 1;
 
     std::srand(time(NULL));
 
@@ -89,7 +86,6 @@ int main() {
             for (int j = MAP_HEIGHT - 1; j >= 0; j--) {
                 for (int i = 0; i < MAP_WIDTH; i++) {
                     map1[i][j] = 0;
-                    map2[i][j] = 0;
                 }
             }
         }
@@ -106,6 +102,8 @@ int main() {
         ImGui::Text("rand: ");
         ImGui::SameLine();
         ImGui::Checkbox("##random", &useRandomColor);
+        ImGui::Text("Bucket Size");
+        ImGui::SliderInt("##s", &bucketSize, 1, 5);
         ImGui::Text("Sound");
         ImGui::Text("fx: ");
         ImGui::SameLine();
@@ -135,83 +133,62 @@ int main() {
                 y = MAX_HEIGHT - 1;
             y = y % MAX_HEIGHT / GRAIN_SIZE;
 
-            if (useMap1) {
-                if (map1[x][y] == 0)
-                    map1[x][y] = red | (green << 8) | (blue << 16) + 1;
-            } else {
-                if (map2[x][y] == 0)
-                    map2[x][y] = red | (green << 8) | (blue << 16) + 1;
+            for (int i = -bucketSize + 1; i < bucketSize; i++) {
+                for (int j = -bucketSize + 1; j < bucketSize; j++) {
+                    if (x + i * 2 < 0 || x + i * 2 >= MAX_WIDTH ||
+                        y + j * 2 < 0 || y + j * 2 >= MAX_HEIGHT)
+                        continue;
+                    if (map1[x + i * 2][y + j * 2] == 0) {
+                        int mod = (i == 0 && j == 0) ? 0 : (bucketSize + i) * 4;
+                        int red_c = red + mod;
+                        int green_c = green + mod;
+                        int blue_c = blue + mod;
+
+                        map1[x + i * 2][y + j * 2] =
+                            red_c | (green_c << 8) | (blue_c << 16) + 1;
+                    }
+                }
             }
         }
 
         for (int j = MAP_HEIGHT - 1; j >= 0; j--) {
             for (int i = 0; i < MAP_WIDTH; i++) {
-                if (useMap1) {
-                    if (map1[i][j]) {
-                        if (j == MAP_HEIGHT - 1) {
-                            map2[i][j] = map1[i][j];
-                        } else if (map2[i][j + 1] == 0)
-                            map2[i][j + 1] = map1[i][j];
-                        else if (map2[i - 1][j + 1] == 0 && i - 1 > 0) {
-                            map2[i - 1][j + 1] = map1[i][j];
-                            if (sound_grain.getStatus() !=
-                                sf::SoundSource::Playing)
-                                sound_grain.play();
-                        } else if (map2[i + 1][j + 1] == 0 &&
-                                   i + 1 < MAP_WIDTH) {
-                            map2[i + 1][j + 1] = map1[i][j];
-                            if (sound_grain.getStatus() !=
-                                sf::SoundSource::Playing)
-                                sound_grain.play();
-                        } else
-                            map2[i][j] = map1[i][j];
-                    }
-                } else {
-                    if (map2[i][j]) {
-                        if (j == MAP_HEIGHT - 1) {
-                            map1[i][j] = map2[i][j];
-                        } else if (map1[i][j + 1] == 0)
-                            map1[i][j + 1] = map2[i][j];
-                        else if (map1[i + 1][j + 1] == 0 && i + 1 < MAP_WIDTH)
-                            map1[i + 1][j + 1] = map2[i][j];
-                        else if (map1[i - 1][j + 1] == 0 && i - 1 > 0)
-                            map1[i - 1][j + 1] = map2[i][j];
-                        else
-                            map1[i][j] = map2[i][j];
-                    }
+                if (map1[i][j]) {
+                    if (j == MAP_HEIGHT - 1) {
+                        map1[i][j] = map1[i][j];
+                    } else if (map1[i][j + 1] == 0) {
+                        map1[i][j + 1] = map1[i][j];
+                        map1[i][j] = 0;
+
+                    } else if (map1[i - 1][j + 1] == 0 && i - 1 > 0) {
+                        map1[i - 1][j + 1] = map1[i][j];
+                        map1[i][j] = 0;
+                        if (sound_grain.getStatus() != sf::SoundSource::Playing)
+                            sound_grain.play();
+                    } else if (map1[i + 1][j + 1] == 0 && i + 1 < MAP_WIDTH) {
+                        map1[i + 1][j + 1] = map1[i][j];
+                        map1[i][j] = 0;
+                        if (sound_grain.getStatus() != sf::SoundSource::Playing)
+                            sound_grain.play();
+                    } else
+                        map1[i][j] = map1[i][j];
                 }
             }
         }
-        useMap1 = !useMap1;
 
         // Draw here
         window.clear();
         for (int i = 0; i < MAP_WIDTH; i++) {
             for (int j = 0; j < MAP_HEIGHT; j++) {
-                if (useMap1) {
-                    if (map1[i][j]) {
-                        sf::RectangleShape grain = sf::RectangleShape(
-                            sf::Vector2f(GRAIN_SIZE, GRAIN_SIZE));
-                        grain.setPosition(
-                            sf::Vector2f(i * GRAIN_SIZE, j * GRAIN_SIZE));
-                        grain.setFillColor(sf::Color(
-                            map1[i][j] & 0xFF, (map1[i][j] >> 8) & 0xFF,
-                            (map1[i][j] >> 16) & 0xFF));
-                        window.draw(grain);
-                    }
-                    map2[i][j] = 0;
-                } else {
-                    if (map2[i][j]) {
-                        sf::RectangleShape grain = sf::RectangleShape(
-                            sf::Vector2f(GRAIN_SIZE, GRAIN_SIZE));
-                        grain.setPosition(
-                            sf::Vector2f(i * GRAIN_SIZE, j * GRAIN_SIZE));
-                        grain.setFillColor(sf::Color(
-                            map2[i][j] & 0xFF, (map2[i][j] >> 8) & 0xFF,
-                            (map2[i][j] >> 16) & 0xFF));
-                        window.draw(grain);
-                    }
-                    map1[i][j] = 0;
+                if (map1[i][j]) {
+                    sf::RectangleShape grain = sf::RectangleShape(
+                        sf::Vector2f(GRAIN_SIZE, GRAIN_SIZE));
+                    grain.setPosition(
+                        sf::Vector2f(i * GRAIN_SIZE, j * GRAIN_SIZE));
+                    grain.setFillColor(sf::Color(map1[i][j] & 0xFF,
+                                                 (map1[i][j] >> 8) & 0xFF,
+                                                 (map1[i][j] >> 16) & 0xFF));
+                    window.draw(grain);
                 }
             }
         }
@@ -223,3 +200,5 @@ int main() {
 
     ImGui::SFML::Shutdown();
 }
+
+void updateMap(int map[MAP_WIDTH][MAP_HEIGHT]) {}
